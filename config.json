@@ -1,0 +1,19 @@
+{
+  "username": "admin",
+  "password": "admin123",
+
+  "gmail_user": "sales@ventilengineering.com",
+  "email_app_password": "ihchgecdxhqdmtfi",
+
+  "sheet_id": "1x60zesQY67FViw4F-SzrWnbU00kJq5QdBrcoRrmmTVw",
+  "sheet_range": "DOMESTIC REGISTER 2025-2026!A1:AG2000",
+
+  "mode": "relevant_only",
+
+  "test_mode": true,
+
+  "recipient_mode": "test",
+
+  "custom_recipients": [
+  ]
+}
