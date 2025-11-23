@@ -1,9 +1,16 @@
 from datetime import datetime
 
-def process_rfq_data(sheet_values):
-    # Shadow mode basic placeholder
-    # Real Level-5 logic will be inserted later
+def process_rfq_data(sheet_values=None, shadow_mode=False):
+    """
+    Level-6 Shadow Mode + Level-5 compatibility
 
+    sheet_values:
+        - Passed when real RFQ data is loaded
+    shadow_mode:
+        - True when triggered by /api/run_shadow (read-only test)
+    """
+
+    # Placeholder logic for now (returns empty sections)
     summary = {
         "high": 0,
         "medium": 0,
@@ -17,6 +24,7 @@ def process_rfq_data(sheet_values):
     }
 
     return {
+        "mode": "shadow" if shadow_mode else "live",
         "summary": summary,
         "high": [],
         "medium": [],
