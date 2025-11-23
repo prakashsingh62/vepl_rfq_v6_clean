@@ -84,3 +84,11 @@ def fetch_latest_emails(mailbox="INBOX", limit=10):
         raise RuntimeError("IMAP error: " + str(e))
     except Exception as e:
         raise RuntimeError("Email reader error: " + str(e))
+        
+def read_emails(limit=10):
+    """
+    Wrapper added for Level-6 integration.
+    Calls fetch_latest_emails() internally so main.py works without changes.
+    """
+    return fetch_latest_emails(limit=limit)
+
