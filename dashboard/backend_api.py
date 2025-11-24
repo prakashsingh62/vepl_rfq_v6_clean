@@ -1,48 +1,31 @@
-from flask import request, jsonify
+from flask import Blueprint, jsonify
 from email_reader import read_emails
-from sheet_writer import append_email_row
+from sheet_writer import write_email_to_sheet
 
+api_blueprint = Blueprint("api_blueprint", __name__)
 
-# ---------------------------------------------------------
-# EMAIL → TEST GOOGLE SHEET (STEP-2)
-# ---------------------------------------------------------
-@app.route("/api/process_emails", methods=["GET"])
+# ----------------------------------------------------------
+# API: Process Emails + Write to Test Google Sheet
+# ----------------------------------------------------------
+@api_blueprint.route("/api/process_emails", methods=["GET"])
 def process_emails_api():
-    """
-    Step-2:
-    Read emails → Append rows to TEST Google Sheet.
-    REAL RFQ sheet stays untouched.
-    """
+    try:
+        emails_data = read_emails()
 
-    # 1. Read emails from Gmail
-    emails = read_emails()
+        if "error" in emails_data:
+            return jsonify({"status": "failed", "error": emails_data["error"]})
 
-    if "emails" not in emails:
+        # Write each email into Google Sheet (TEST MODE)
+        results = []
+        for email in emails_data["emails"]:
+            row_status = write_email_to_sheet(email)
+            results.append({"email": email, "sheet_update": row_status})
+
         return jsonify({
-            "status": "fail",
-            "error": "Email read failed",
-            "details": emails
+            "status": "success",
+            "emails": emails_data["emails"],
+            "sheet_results": results
         })
 
-    email_list = emails["emails"]
-    written = 0
-
-    # 2. Append each email → New row in TEST SHEET
-    for e in email_list:
-        sender = e.get("from", "")
-        subject = e.get("subject", "")
-        date = e.get("date", "")
-
-        try:
-            append_email_row(sender, subject, date)
-            written += 1
-        except Exception as ex:
-            print("Write error:", ex)
-
-    # 3. Response
-    return jsonify({
-        "status": "success",
-        "emails_processed": len(email_list),
-        "rows_written_to_test_sheet": written,
-        "preview": email_list
-    })
+    except Exception as e:
+        return jsonify({"status": "failed", "error": str(e)})
