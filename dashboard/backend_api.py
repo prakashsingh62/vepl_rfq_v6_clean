@@ -1,31 +1,26 @@
-# backend_api.py
 from flask import Blueprint, jsonify
 from email_reader import read_emails
-from sheet_writer import write_email_to_sheet_test_mode   # FIXED NAME
+from sheet_writer import write_email_to_sheet_test_mode
 
-api_blueprint = Blueprint("api_blueprint", __name__)
+api_blueprint = Blueprint("api", __name__)
 
-@api_blueprint.route("/api/ping", methods=["GET"])
-def ping():
-    return jsonify({"status": "ok"}), 200
-
-@api_blueprint.route("/api/process_emails", methods=["GET"])
+@api_blueprint.route("/process_emails", methods=["GET"])
 def process_emails():
     try:
-        emails = read_emails()
+        # 1. Read emails
+        email_data = read_emails()
+
+        # If email_reader returned an error
+        if "error" in email_data:
+            return jsonify({"error": email_data["error"], "status": "failed"}), 500
+
+        # 2. Write all emails to TEST SHEET
+        write_email_to_sheet_test_mode(email_data.get("emails", []))
+
+        return jsonify({
+            "emails": email_data,
+            "status": "Emails processed successfully"
+        })
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    if isinstance(emails, dict) and "error" in emails:
-        return jsonify({"emails": emails, "status": "failed"}), 500
-
-    try:
-        for mail in emails:
-            write_email_to_sheet_test_mode(mail)   # FIXED
-    except Exception as e:
-        return jsonify({"error": f"Google Sheet write failed: {str(e)}"}), 500
-
-    return jsonify({
-        "emails": emails,
-        "status": "Emails processed successfully"
-    }), 200
+        return jsonify({"error": str(e), "status": "failed"}), 500
