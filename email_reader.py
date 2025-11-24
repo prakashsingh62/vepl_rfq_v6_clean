@@ -1,14 +1,6 @@
-import imaplib
-import email
-from email.header import decode_header
-import os
-
-# ---------------------------------------------------------
-# READ EMAILS USING ENVIRONMENT VARIABLES
-# ---------------------------------------------------------
 def read_emails():
     try:
-        # Correct variable names for Render env
+        # Fetch credentials from Render environment
         imap_user = os.getenv("IMAP_USER")
         imap_pass = os.getenv("IMAP_PASS")
 
@@ -16,7 +8,6 @@ def read_emails():
             return {"error": "IMAP credentials missing", "emails": []}
 
         imap_server = "imap.gmail.com"
-
         mail = imaplib.IMAP4_SSL(imap_server)
         mail.login(imap_user, imap_pass)
         mail.select("inbox")
@@ -24,26 +15,25 @@ def read_emails():
         status, messages = mail.search(None, "ALL")
         email_list = []
 
-        # last 10 emails
-        for num in messages[0].split()[-10:]:
-            status, msg_data = mail.fetch(num, "(RFC822)")
-            msg = email.message_from_bytes(msg_data[0][1])
+        for msg_id in messages[0].split():
+            status, msg_data = mail.fetch(msg_id, "(RFC822)")
+            raw_email = msg_data[0][1]
+            msg = email.message_from_bytes(raw_email)
 
-            from_ = msg["From"]
-            subject, encoding = decode_header(msg["Subject"])[0]
+            subject = decode_header(msg["Subject"])[0][0]
             if isinstance(subject, bytes):
-                subject = subject.decode(encoding if encoding else "utf-8", errors="ignore")
+                subject = subject.decode()
 
-            date = msg["Date"]
+            from_ = msg.get("From")
+            date_ = msg.get("Date")
 
             email_list.append({
+                "date": date_,
                 "from": from_,
-                "subject": subject,
-                "date": date
+                "subject": subject
             })
 
-        mail.logout()
-        return email_list
+        return {"emails": email_list, "status": "success"}
 
     except Exception as e:
-        return {"error": str(e), "emails": []}
+        return {"error": str(e), "status": "failed"}
