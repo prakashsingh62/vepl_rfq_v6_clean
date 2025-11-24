@@ -8,7 +8,7 @@ from datetime import datetime
 # ----------------------------
 TEST_SHEET_ID = "1hKMwlnN3GAE4dxVGvq2WHT2-Om9SJ3P91L8cxioAeoo"
 TEST_TAB_NAME = "Sheet1"
-SERVICE_ACCOUNT_FILE = "service_account (1).json"
+SERVICE_ACCOUNT_FILE = "service_account.json"
 
 
 def get_sheet_service():
@@ -76,3 +76,4 @@ def write_email_to_sheet_test_mode(emails):
     ).execute()
 
     return True
+
