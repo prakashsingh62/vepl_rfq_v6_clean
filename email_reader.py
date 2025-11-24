@@ -14,10 +14,10 @@ def extract_latest_message(text):
 
     text = text.replace("\r", "")
 
-    # Remove entire reply history: "On ... wrote:"
+    # Remove reply history: "On ... wrote:"
     text = re.split(r"\nOn .*wrote:", text, flags=re.IGNORECASE)[0]
 
-    # Remove "From: XYZ <xyz@company.com>"
+    # Remove "From:" blocks inside body
     text = re.split(r"\nFrom: ", text)[0]
 
     # Remove "-----Original Message-----"
@@ -26,17 +26,65 @@ def extract_latest_message(text):
     # Remove signatures
     text = re.split(r"Regards,|Warm Regards,|Best Regards,|Thanks,|Thank you", text)[0]
 
-    # Strip Gmail reply markers >, >>, >>> etc.
+    # Remove Gmail reply markers >, >>, >>>
     text = re.sub(r"^>+ ?", "", text, flags=re.MULTILINE)
 
-    # Remove excessive blank lines
+    # Remove extra blank lines
     text = re.sub(r"\n{2,}", "\n", text)
 
     return text.strip()
 
 
 # ---------------------------------------------------------
-# SAFE IMAP EMAIL READER (NO BASE64 DECODING)
+# RFQ EXTRACTOR
+# ---------------------------------------------------------
+def extract_rfq_data(subject, body):
+    text = f"{subject}\n{body}"
+
+    # ---- RFQ NUMBER ----
+    rfq_patterns = [
+        r'\bRFQ[:\s-]*([A-Za-z0-9-_/]+)',
+        r'\bEnquiry[:\s-]*([A-Za-z0-9-_/]+)',
+        r'\bEnq[:\s-]*([A-Za-z0-9-_/]+)',
+        r'\bInquiry[:\s-]*([A-Za-z0-9-_/]+)',
+        r'\b2800\d{5,}\b'      # Ventil standard RFQ format
+    ]
+
+    rfq_no = ""
+    for p in rfq_patterns:
+        match = re.search(p, text, re.IGNORECASE)
+        if match:
+            rfq_no = match.group(1)
+            break
+
+    # ---- QUANTITY ----
+    qty = ""
+    qty_match = re.search(r'\b(Qty|Quantity)[:\s]*([\d\.]+)', text, re.IGNORECASE)
+    if qty_match:
+        qty = qty_match.group(2)
+
+    # ---- PART NUMBER / MODEL ----
+    part = ""
+    part_match = re.search(r'(Part\s*Number|Model|PN|Item Code)[:\s-]*([A-Za-z0-9-_/]+)', text, re.IGNORECASE)
+    if part_match:
+        part = part_match.group(2)
+
+    # ---- DESCRIPTION ----
+    desc = ""
+    desc_match = re.search(r'(Description|Desc)[:\s-]*(.*)', text, re.IGNORECASE)
+    if desc_match:
+        desc = desc_match.group(2).strip()
+
+    return {
+        "rfq_no": rfq_no,
+        "qty": qty,
+        "part": part,
+        "description": desc
+    }
+
+
+# ---------------------------------------------------------
+# SAFE IMAP EMAIL READER (ZERO BASE64)
 # ---------------------------------------------------------
 def read_emails(imap_user=None, imap_pass=None):
     try:
@@ -59,7 +107,7 @@ def read_emails(imap_user=None, imap_pass=None):
             _, msg_data = mail.fetch(num, "(RFC822)")
             msg = email.message_from_bytes(msg_data[0][1])
 
-            # -------- SUBJECT --------
+            # SUBJECT
             raw_subject = msg.get("Subject")
             subject = ""
             if raw_subject:
@@ -69,11 +117,11 @@ def read_emails(imap_user=None, imap_pass=None):
                 except:
                     subject = raw_subject
 
-            # -------- FROM / DATE --------
+            # FROM / DATE
             sender = msg.get("From") or ""
             date = msg.get("Date") or ""
 
-            # -------- BODY (SAFE ONLY) --------
+            # BODY (SAFE)
             body = ""
             try:
                 if msg.is_multipart():
@@ -89,11 +137,18 @@ def read_emails(imap_user=None, imap_pass=None):
             # CLEAN to latest message
             body = extract_latest_message(body)
 
+            # PARSE RFQ DETAILS
+            parsed = extract_rfq_data(subject, body)
+
             emails_list.append({
                 "date": date,
                 "from": sender,
                 "subject": subject,
-                "body": body
+                "body": body,
+                "rfq_no": parsed["rfq_no"],
+                "qty": parsed["qty"],
+                "part": parsed["part"],
+                "description": parsed["description"]
             })
 
         mail.logout()
