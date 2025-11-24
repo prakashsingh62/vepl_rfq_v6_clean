@@ -1,26 +1,93 @@
-from flask import Blueprint, jsonify
-from email_reader import read_emails
-from sheet_writer import write_email_to_sheet_test_mode
+import imaplib
+import email
+from email.header import decode_header
+import os
 
-api_blueprint = Blueprint("api", __name__)
 
-@api_blueprint.route("/process_emails", methods=["GET"])
-def process_emails():
+def read_emails(imap_user: str, imap_pass: str):
+    """
+    Reads unread emails from Gmail IMAP.
+    ALWAYS returns a DICTIONARY so backend_api.py never breaks.
+    """
+
     try:
-        # 1. Read emails
-        email_data = read_emails()
+        if not imap_user or not imap_pass:
+            return {
+                "emails": [],
+                "error": "IMAP credentials missing",
+                "status": "failed"
+            }
 
-        # If email_reader returned an error
-        if "error" in email_data:
-            return jsonify({"error": email_data["error"], "status": "failed"}), 500
+        # -----------------------------------------
+        # CONNECT TO IMAP SERVER
+        # -----------------------------------------
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
 
-        # 2. Write all emails to TEST SHEET
-        write_email_to_sheet_test_mode(email_data.get("emails", []))
+        try:
+            mail.login(imap_user, imap_pass)
+        except Exception as e:
+            return {
+                "emails": [],
+                "error": f"Login failed: {str(e)}",
+                "status": "failed"
+            }
 
-        return jsonify({
-            "emails": email_data,
-            "status": "Emails processed successfully"
-        })
+        # -----------------------------------------
+        # FETCH UNREAD EMAILS
+        # -----------------------------------------
+        mail.select("inbox")
+
+        _, message_numbers_raw = mail.search(None, 'UNSEEN')
+
+        messages = message_numbers_raw[0].split()
+        email_list = []
+
+        for num in messages:
+            _, msg_data = mail.fetch(num, "(RFC822)")
+            raw_email = msg_data[0][1]
+            msg = email.message_from_bytes(raw_email)
+
+            subject, encoding = decode_header(msg.get("Subject", ""))[0]
+            if isinstance(subject, bytes):
+                subject = subject.decode(encoding or "utf-8", errors="ignore")
+
+            from_email = msg.get("From", "")
+
+            body = ""
+            if msg.is_multipart():
+                for part in msg.walk():
+                    ctype = part.get_content_type()
+                    if ctype == "text/plain":
+                        try:
+                            body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                        except:
+                            body = ""
+            else:
+                try:
+                    body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
+                except:
+                    body = ""
+
+            email_list.append({
+                "subject": subject,
+                "from": from_email,
+                "body": body.strip()
+            })
+
+        mail.logout()
+
+        # -----------------------------------------
+        # FINAL FIXED RETURN (DICT)
+        # -----------------------------------------
+        return {
+            "emails": email_list,
+            "count": len(email_list),
+            "status": "success"
+        }
 
     except Exception as e:
-        return jsonify({"error": str(e), "status": "failed"}), 500
+        return {
+            "emails": [],
+            "error": str(e),
+            "status": "failed"
+        }
