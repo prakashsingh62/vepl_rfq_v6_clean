@@ -1,109 +1,49 @@
 import imaplib
 import email
 from email.header import decode_header
-import base64
 
-# ==================================================================
-# SAFE DECODER — FIXES "Short substrate on input" and all bad emails
-# ==================================================================
+import os
 
-def safe_decode(payload):
-    if payload is None:
-        return ""
 
-    # Try normal UTF-8 decode
+# ---------------------------------------------------------
+# READ EMAILS USING ENVIRONMENT VARIABLES
+# ---------------------------------------------------------
+def read_emails():
     try:
-        return payload.decode("utf-8")
-    except:
-        pass
+        imap_user = os.getenv("EMAIL_USER")
+        imap_pass = os.getenv("EMAIL_APP_PASSWORD")
 
-    # Try base64 decode with padding
-    try:
-        padded = payload + b"==="
-        return base64.b64decode(padded).decode("utf-8", errors="ignore")
-    except:
-        pass
+        if not imap_user or not imap_pass:
+            return {"error": "IMAP credentials missing", "emails": []}
 
-    # Last fallback
-    return "(Unable to decode email body)"
+        imap_server = "imap.gmail.com"
 
-# ================================================================
-# EMAIL CLEANER
-# ================================================================
-
-def clean_text(raw):
-    if isinstance(raw, str):
-        return raw
-    try:
-        decoded, charset = decode_header(raw)[0]
-        if isinstance(decoded, bytes):
-            return decoded.decode(charset or "utf-8", errors="ignore")
-        return decoded
-    except:
-        return str(raw)
-
-# ================================================================
-# MAIN EMAIL READER FUNCTION
-# ================================================================
-
-def read_emails(imap_user, imap_pass, imap_server="imap.gmail.com"):
-    try:
         mail = imaplib.IMAP4_SSL(imap_server)
         mail.login(imap_user, imap_pass)
         mail.select("inbox")
 
-        _, msgnums = mail.search(None, "ALL")
-        emails = []
+        status, messages = mail.search(None, "ALL")
+        email_list = []
 
-        for num in msgnums[0].split():
-            try:
-                _, msg_data = mail.fetch(num, "(RFC822)")
-                if not msg_data or msg_data[0] is None:
-                    continue
+        for num in messages[0].split()[-10:]:  # last 10 emails only
+            status, msg_data = mail.fetch(num, "(RFC822)")
+            msg = email.message_from_bytes(msg_data[0][1])
 
-                msg = email.message_from_bytes(msg_data[0][1])
+            from_ = msg["From"]
+            subject, encoding = decode_header(msg["Subject"])[0]
+            if isinstance(subject, bytes):
+                subject = subject.decode(encoding if encoding else "utf-8", errors="ignore")
 
-                # HEADER DETAILS
-                from_address = clean_text(msg.get("From"))
-                subject = clean_text(msg.get("Subject"))
-                date_str = clean_text(msg.get("Date"))
+            date = msg["Date"]
 
-                # BODY EXTRACTION (SAFE)
-                body = ""
-
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() == "text/plain":
-                            payload = part.get_payload(decode=True)
-                            body = safe_decode(payload)
-                else:
-                    payload = msg.get_payload(decode=True)
-                    body = safe_decode(payload)
-
-                emails.append({
-                    "from": from_address,
-                    "subject": subject,
-                    "date": date_str,
-                    "body": body
-                })
-
-            except Exception as inner_error:
-                emails.append({
-                    "from": "(error)",
-                    "subject": "(error)",
-                    "date": "",
-                    "body": f"Error reading email: {str(inner_error)}"
-                })
+            email_list.append({
+                "from": from_,
+                "subject": subject,
+                "date": date
+            })
 
         mail.logout()
-
-        return {
-            "status": "success",
-            "emails": emails
-        }
+        return email_list
 
     except Exception as e:
-        return {
-            "status": "failed",
-            "error": str(e)
-        }
+        return {"error": str(e), "emails": []}
