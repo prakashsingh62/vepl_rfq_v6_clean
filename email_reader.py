@@ -1,10 +1,20 @@
 import imaplib
 import email
 from email.header import decode_header
+import base64
 import os
 
-def read_emails(imap_user, imap_pass):
+
+def safe_b64decode(data):
     try:
+        return base64.b64decode(data, validate=False)
+    except Exception:
+        return b""   # prevents crash
+
+
+def read_emails(imap_user=None, imap_pass=None):
+    try:
+        # read from environment (Render)
         imap_user = os.getenv("IMAP_USER")
         imap_pass = os.getenv("IMAP_PASS")
 
@@ -22,7 +32,12 @@ def read_emails(imap_user, imap_pass):
 
         for num in ids[-10:]:
             _, msg_data = mail.fetch(num, "(RFC822)")
-            msg = email.message_from_bytes(msg_data[0][1])
+            raw = msg_data[0][1]
+
+            # SAFE decode
+            raw = safe_b64decode(raw) if isinstance(raw, str) else raw
+
+            msg = email.message_from_bytes(raw)
 
             date = msg.get("Date")
 
