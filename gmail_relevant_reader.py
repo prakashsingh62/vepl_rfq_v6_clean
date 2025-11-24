@@ -1,5 +1,5 @@
 # gmail_relevant_reader.py
-# Level-6 Enterprise Relevant Gmail Reader (Optimized)
+# Level-6 Enterprise Relevant Gmail Reader (Optimized & Safe)
 
 import base64
 import re
@@ -12,7 +12,7 @@ RFQ_PATTERNS = [
     r"\bRFQ[:\s-]*([A-Za-z0-9-_/]+)\b",
     r"\bEnquiry[:\s-]*([A-Za-z0-9-_/]+)\b",
     r"\bEnq[:\s-]*([A-Za-z0-9-_/]+)\b",
-    r"\b2800\d{5,}\b"              # Your RFQ No pattern
+    r"\b2800\d{5,}\b"
 ]
 
 KEYWORDS = [
@@ -20,20 +20,33 @@ KEYWORDS = [
     "technical", "clarification", "price", "delivery", "terms"
 ]
 
+
+def safe_b64decode(data):
+    """Safe base64 decoder that never crashes."""
+    try:
+        return base64.urlsafe_b64decode(data + "===")
+    except Exception:
+        return b""
+
+
 def extract_text(payload):
-    """Extract readable text from Gmail payload."""
-    if "parts" in payload:
-        for part in payload["parts"]:
-            if part["mimeType"] in ["text/plain", "text/html"]:
-                data = part["body"]["data"]
-                return base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
-    if "body" in payload and "data" in payload["body"]:
-        return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="ignore")
-    return ""
+    """Extract readable text from Gmail payload safely."""
+    try:
+        if "parts" in payload:
+            for part in payload["parts"]:
+                if part["mimeType"] in ["text/plain", "text/html"]:
+                    data = part["body"]["data"]
+                    return safe_b64decode(data).decode("utf-8", errors="ignore")
+
+        if "body" in payload and "data" in payload["body"]:
+            return safe_b64decode(payload["body"]["data"]).decode("utf-8", errors="ignore")
+
+        return ""
+    except:
+        return ""
 
 
 def extract_rfq_numbers(text):
-    """Return all RFQ numbers found inside email."""
     matches = []
     for pattern in RFQ_PATTERNS:
         matches += re.findall(pattern, text, flags=re.IGNORECASE)
@@ -45,12 +58,6 @@ def build_gmail_service(creds):
 
 
 def fetch_relevant_emails(creds, target_rfqs=None):
-    """
-    Read ONLY important RFQ emails:
-    - Last 10 days
-    - Matching RFQ No
-    - Or containing RFQ keywords
-    """
     service = build_gmail_service(creds)
 
     date_cutoff = (datetime.utcnow() - timedelta(days=10)).strftime("%Y/%m/%d")
@@ -71,18 +78,13 @@ def fetch_relevant_emails(creds, target_rfqs=None):
         text = extract_text(payload)
         full_text = snippet + " " + text
 
-        # 1 — Contains RFQ No
         rfqs_found = extract_rfq_numbers(full_text)
-
-        # 2 — Has Important Words
         has_keyword = any(k.lower() in full_text.lower() for k in KEYWORDS)
 
-        # 3 — Direct match with current sheet RFQs
         match_target = False
         if target_rfqs:
             match_target = any(r in full_text for r in target_rfqs)
 
-        # If any condition matches → RELEVANT
         if rfqs_found or has_keyword or match_target:
             relevant.append({
                 "id": m["id"],
