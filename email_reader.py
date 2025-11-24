@@ -1,20 +1,11 @@
 import imaplib
 import email
 from email.header import decode_header
-import base64
 import os
-
-
-def safe_b64decode(data):
-    try:
-        return base64.b64decode(data, validate=False)
-    except Exception:
-        return b""   # prevents crash
 
 
 def read_emails(imap_user=None, imap_pass=None):
     try:
-        # read from environment (Render)
         imap_user = os.getenv("IMAP_USER")
         imap_pass = os.getenv("IMAP_PASS")
 
@@ -32,25 +23,35 @@ def read_emails(imap_user=None, imap_pass=None):
 
         for num in ids[-10:]:
             _, msg_data = mail.fetch(num, "(RFC822)")
-            raw = msg_data[0][1]
+            msg = email.message_from_bytes(msg_data[0][1])
 
-            # SAFE decode
-            raw = safe_b64decode(raw) if isinstance(raw, str) else raw
+            raw_subject = msg.get("Subject")
+            if raw_subject:
+                subject, enc = decode_header(raw_subject)[0]
+                if isinstance(subject, bytes):
+                    subject = subject.decode(enc or "utf-8", errors="ignore")
+            else:
+                subject = ""
 
-            msg = email.message_from_bytes(raw)
-
-            date = msg.get("Date")
-
-            subject, enc = decode_header(msg.get("Subject"))[0]
-            if isinstance(subject, bytes):
-                subject = subject.decode(enc or "utf-8", errors="ignore")
-
-            sender = msg.get("From")
+            # NEW: Always-return-safe-body
+            body = ""
+            try:
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        ctype = part.get_content_type()
+                        if ctype == "text/plain":
+                            body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                            break
+                else:
+                    body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
+            except:
+                body = ""
 
             emails_list.append({
-                "date": date,
-                "from": sender,
-                "subject": subject
+                "date": msg.get("Date"),
+                "from": msg.get("From"),
+                "subject": subject,
+                "body": body       # REQUIRED ✔ FIXED
             })
 
         mail.logout()
