@@ -1,17 +1,16 @@
 import imaplib
 import email
 from email.header import decode_header
-
 import os
-
 
 # ---------------------------------------------------------
 # READ EMAILS USING ENVIRONMENT VARIABLES
 # ---------------------------------------------------------
 def read_emails():
     try:
-        imap_user = os.getenv("EMAIL_USER")
-        imap_pass = os.getenv("EMAIL_APP_PASSWORD")
+        # Correct variable names for Render env
+        imap_user = os.getenv("IMAP_USER")
+        imap_pass = os.getenv("IMAP_PASS")
 
         if not imap_user or not imap_pass:
             return {"error": "IMAP credentials missing", "emails": []}
@@ -25,7 +24,8 @@ def read_emails():
         status, messages = mail.search(None, "ALL")
         email_list = []
 
-        for num in messages[0].split()[-10:]:  # last 10 emails only
+        # last 10 emails
+        for num in messages[0].split()[-10:]:
             status, msg_data = mail.fetch(num, "(RFC822)")
             msg = email.message_from_bytes(msg_data[0][1])
 
