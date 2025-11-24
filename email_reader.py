@@ -3,6 +3,29 @@ import email
 from email.header import decode_header
 import os
 import re
+from bs4 import BeautifulSoup
+
+
+# ---------------------------------------------------------
+# HTML → CLEAN TEXT (Medium Clean)
+# ---------------------------------------------------------
+def clean_html_to_text(html):
+    # Parse HTML
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Remove script/style
+    for tag in soup(["script", "style", "img"]):
+        tag.decompose()
+
+    text = soup.get_text(separator="\n")
+
+    # Remove tracking / huge URLs
+    text = re.sub(r'http\S+', '', text)
+
+    # Remove excessive blank lines
+    text = re.sub(r'\n{2,}', '\n', text)
+
+    return text.strip()
 
 
 # ---------------------------------------------------------
@@ -41,13 +64,12 @@ def extract_latest_message(text):
 def extract_rfq_data(subject, body):
     text = f"{subject}\n{body}"
 
-    # ---- RFQ NUMBER ----
     rfq_patterns = [
         r'\bRFQ[:\s-]*([A-Za-z0-9-_/]+)',
         r'\bEnquiry[:\s-]*([A-Za-z0-9-_/]+)',
         r'\bEnq[:\s-]*([A-Za-z0-9-_/]+)',
         r'\bInquiry[:\s-]*([A-Za-z0-9-_/]+)',
-        r'\b2800\d{5,}\b'      # Ventil standard RFQ format
+        r'\b2800\d{5,}\b'
     ]
 
     rfq_no = ""
@@ -57,19 +79,16 @@ def extract_rfq_data(subject, body):
             rfq_no = match.group(1)
             break
 
-    # ---- QUANTITY ----
     qty = ""
     qty_match = re.search(r'\b(Qty|Quantity)[:\s]*([\d\.]+)', text, re.IGNORECASE)
     if qty_match:
         qty = qty_match.group(2)
 
-    # ---- PART NUMBER / MODEL ----
     part = ""
     part_match = re.search(r'(Part\s*Number|Model|PN|Item Code)[:\s-]*([A-Za-z0-9-_/]+)', text, re.IGNORECASE)
     if part_match:
         part = part_match.group(2)
 
-    # ---- DESCRIPTION ----
     desc = ""
     desc_match = re.search(r'(Description|Desc)[:\s-]*(.*)', text, re.IGNORECASE)
     if desc_match:
@@ -84,7 +103,7 @@ def extract_rfq_data(subject, body):
 
 
 # ---------------------------------------------------------
-# SAFE IMAP EMAIL READER (ZERO BASE64)
+# SAFE IMAP EMAIL READER (HTML + TEXT VERSION)
 # ---------------------------------------------------------
 def read_emails(imap_user=None, imap_pass=None):
     try:
@@ -121,20 +140,33 @@ def read_emails(imap_user=None, imap_pass=None):
             sender = msg.get("From") or ""
             date = msg.get("Date") or ""
 
-            # BODY (SAFE)
+            # BODY (HTML or TEXT)
             body = ""
             try:
                 if msg.is_multipart():
                     for part in msg.walk():
-                        if part.get_content_type() == "text/plain":
+                        ctype = part.get_content_type()
+
+                        if ctype == "text/plain":
                             body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
                             break
+
+                        if ctype == "text/html":
+                            html_content = part.get_payload(decode=True).decode("utf-8", errors="ignore")
+                            body = clean_html_to_text(html_content)
+                            break
+
                 else:
-                    body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
+                    if msg.get_content_type() == "text/html":
+                        html_content = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
+                        body = clean_html_to_text(html_content)
+                    else:
+                        body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
+
             except:
                 body = ""
 
-            # CLEAN to latest message
+            # CLEAN latest message
             body = extract_latest_message(body)
 
             # PARSE RFQ DETAILS
