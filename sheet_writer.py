@@ -92,3 +92,48 @@ def write_parsed_rows_test_mode(rows):
 
     except Exception as e:
         return str(e)
+
+# ---------------------------------------------------------
+# LEVEL-6 PRODUCTION RFQ WRITER
+# ---------------------------------------------------------
+PROD_SHEET_ID = "PUT-YOUR-PRODUCTION-SHEET-ID-HERE"
+PROD_TAB_NAME = "Sheet1"      # or your real tab name
+
+
+def write_rfq_rows(emails):
+    """
+    Writes structured RFQ emails into the production sheet.
+    Each email dict must contain:
+    date, from, subject, body, rfq_no, qty, part, description
+    """
+
+    try:
+        sheet = get_sheet_service()
+        rows = []
+
+        for em in emails:
+
+            rows.append([
+                em.get("date", ""),
+                em.get("from", ""),
+                em.get("subject", ""),
+                em.get("rfq_no", ""),
+                em.get("qty", ""),
+                em.get("part", ""),
+                em.get("description", ""),
+                em.get("body", ""),
+                "IMAP"
+            ])
+
+        sheet.values().append(
+            spreadsheetId=PROD_SHEET_ID,
+            range=f"{PROD_TAB_NAME}!A2",
+            valueInputOption="RAW",
+            body={"values": rows}
+        ).execute()
+
+        return True
+
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
+
