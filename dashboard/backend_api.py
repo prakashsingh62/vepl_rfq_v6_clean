@@ -1,50 +1,48 @@
-# dashboard/backend_api.py
-
-from flask import Blueprint, jsonify
-import json
-
-from rfq_logic import process_rfq_data
+from flask import request, jsonify
 from email_reader import read_emails
-
-api_blueprint = Blueprint("api", __name__)
-
-# ---------------------------------------------------------
-# HEALTH CHECK
-# ---------------------------------------------------------
-@api_blueprint.route("/health")
-def health():
-    return jsonify({"status": "ok"})
+from sheet_writer import append_email_row
 
 
 # ---------------------------------------------------------
-# RUN SHADOW MODE
+# EMAIL → TEST GOOGLE SHEET (STEP-2)
 # ---------------------------------------------------------
-@api_blueprint.route("/run_shadow", methods=["GET"])
-def run_shadow():
-    try:
-        result = process_rfq_data(shadow_mode=True)
+@app.route("/api/process_emails", methods=["GET"])
+def process_emails_api():
+    """
+    Step-2:
+    Read emails → Append rows to TEST Google Sheet.
+    REAL RFQ sheet stays untouched.
+    """
 
+    # 1. Read emails from Gmail
+    emails = read_emails()
+
+    if "emails" not in emails:
         return jsonify({
-            "status": "Shadow Mode executed",
-            "data": result
+            "status": "fail",
+            "error": "Email read failed",
+            "details": emails
         })
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    email_list = emails["emails"]
+    written = 0
 
+    # 2. Append each email → New row in TEST SHEET
+    for e in email_list:
+        sender = e.get("from", "")
+        subject = e.get("subject", "")
+        date = e.get("date", "")
 
-# ---------------------------------------------------------
-# PROCESS EMAILS
-# ---------------------------------------------------------
-@api_blueprint.route("/process_emails", methods=["GET"])
-def process_emails():
-    try:
-        email_data = read_emails()
+        try:
+            append_email_row(sender, subject, date)
+            written += 1
+        except Exception as ex:
+            print("Write error:", ex)
 
-        return jsonify({
-            "status": "Emails processed successfully",
-            "emails": email_data
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    # 3. Response
+    return jsonify({
+        "status": "success",
+        "emails_processed": len(email_list),
+        "rows_written_to_test_sheet": written,
+        "preview": email_list
+    })
