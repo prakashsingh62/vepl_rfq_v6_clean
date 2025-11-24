@@ -26,7 +26,6 @@ def read_emails():
         return {"error": "Gmail credentials not set in environment or config.json."}
 
     try:
-        # connect to Gmail IMAP
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(gmail_user, email_app_password)
         mail.select("inbox")
@@ -34,7 +33,7 @@ def read_emails():
         status, messages = mail.search(None, "ALL")
 
         email_list = []
-        for num in messages[0].split()[-10:]:  # last 10 emails
+        for num in messages[0].split()[-10:]:
             status, data = mail.fetch(num, "(RFC822)")
             msg = email.message_from_bytes(data[0][1])
 
