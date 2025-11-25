@@ -109,81 +109,43 @@ def read_emails(imap_user=None, imap_pass=None):
         imap_user = os.getenv("IMAP_USER")
         imap_pass = os.getenv("IMAP_PASS")
 
+        print("DEBUG: IMAP_USER =", imap_user)
+        print("DEBUG: IMAP_PASS =", "(hidden)")
+        print("DEBUG: Attempting IMAP login...")
+
         if not imap_user or not imap_pass:
             return {"status": "failed", "error": "IMAP credentials missing", "emails": []}
 
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(imap_user, imap_pass)
-        mail.select("INBOX")
+        # START IMAP
+        try:
+            mail = imaplib.IMAP4_SSL("imap.gmail.com")
+            login_result = mail.login(imap_user, imap_pass)
+            print("DEBUG: LOGIN RESULT =", login_result)
+        except Exception as e:
+            print("DEBUG: LOGIN ERROR =", str(e))
+            return {"status": "failed", "error": f"LOGIN FAILED: {e}", "emails": []}
 
-        _, data = mail.search(None, "ALL")
+        # SELECT INBOX
+        try:
+            status, inbox_msg = mail.select("INBOX")
+            print("DEBUG: SELECT RESULT =", status, inbox_msg)
+        except Exception as e:
+            print("DEBUG: SELECT ERROR =", str(e))
+            return {"status": "failed", "error": f"SELECT FAILED: {e}", "emails": []}
+
+        # SEARCH EMAILS
+        try:
+            status, data = mail.search(None, "ALL")
+            print("DEBUG: SEARCH RESULT =", status, data)
+        except Exception as e:
+            print("DEBUG: SEARCH ERROR =", str(e))
+            return {"status": "failed", "error": f"SEARCH FAILED: {e}", "emails": []}
+
         ids = data[0].split()
-
         emails_list = []
 
-        for num in ids[-10:]:
-            _, msg_data = mail.fetch(num, "(RFC822)")
-            msg = email.message_from_bytes(msg_data[0][1])
-
-            # SUBJECT
-            raw_subject = msg.get("Subject")
-            subject = ""
-            if raw_subject:
-                try:
-                    s, enc = decode_header(raw_subject)[0]
-                    subject = s.decode(enc or "utf-8", errors="ignore") if isinstance(s, bytes) else s
-                except:
-                    subject = raw_subject
-
-            # FROM / DATE
-            sender = msg.get("From") or ""
-            date = msg.get("Date") or ""
-
-            # BODY (HTML or TEXT)
-            body = ""
-            try:
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        ctype = part.get_content_type()
-
-                        if ctype == "text/plain":
-                            body = part.get_payload(decode=True).decode("utf-8", errors="ignore")
-                            break
-
-                        if ctype == "text/html":
-                            html_content = part.get_payload(decode=True).decode("utf-8", errors="ignore")
-                            body = clean_html_to_text(html_content)
-                            break
-
-                else:
-                    if msg.get_content_type() == "text/html":
-                        html_content = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
-                        body = clean_html_to_text(html_content)
-                    else:
-                        body = msg.get_payload(decode=True).decode("utf-8", errors="ignore")
-
-            except:
-                body = ""
-
-            # CLEAN latest message
-            body = extract_latest_message(body)
-
-            # PARSE RFQ DETAILS
-            parsed = extract_rfq_data(subject, body)
-
-            emails_list.append({
-                "date": date,
-                "from": sender,
-                "subject": subject,
-                "body": body,
-                "rfq_no": parsed["rfq_no"],
-                "qty": parsed["qty"],
-                "part": parsed["part"],
-                "description": parsed["description"]
-            })
-
-        mail.logout()
         return {"status": "success", "emails": emails_list}
 
     except Exception as e:
+        print("FATAL ERROR:", str(e))
         return {"status": "failed", "error": str(e), "emails": []}
