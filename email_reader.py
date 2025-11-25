@@ -113,7 +113,7 @@ def read_emails(imap_user=None, imap_pass=None):
 
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
         mail.login(imap_user, imap_pass)
-        mail.select("inbox")
+        mail.select("INBOX")
 
         _, data = mail.search(None, "ALL")
         ids = data[0].split()
